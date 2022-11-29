@@ -7,10 +7,14 @@ from flask_migrate import Migrate
 from flask_swagger import swagger
 from flask_cors import CORS
 from api.utils import APIException, generate_sitemap
-from api.models import db
+from api.models import db, User
 from api.routes import api
 from api.admin import setup_admin
 from api.commands import setup_commands
+from flask_jwt_extended import create_access_token
+from flask_jwt_extended import get_jwt_identity
+from flask_jwt_extended import jwt_required
+from flask_jwt_extended import JWTManager
 
 #from models import Person
 
@@ -18,6 +22,9 @@ ENV = os.getenv("FLASK_ENV")
 static_file_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), '../public/')
 app = Flask(__name__)
 app.url_map.strict_slashes = False
+
+app.config["JWT_SECRET_KEY"] = "super-secret"  # Change this!
+jwt = JWTManager(app)
 
 # database condiguration
 db_url = os.getenv("DATABASE_URL")
@@ -63,6 +70,28 @@ def serve_any_other_file(path):
     response.cache_control.max_age = 0 # avoid cache memory
     return response
 
+@app.route('/signup', methods=['POST'])
+def signup():
+    new_user = {}
+    body = request.get_json()
+    if body is None:
+        return jsonify({"msg": "The body is empty"}), 403
+    new_user = User(email=body["email"], password=body["password"], is_active=True)
+
+    db.session.add(new_user)
+    db.session.commit()
+    print("este es mi body", body)
+    return jsonify({"msg": "User registered succesfully!"}), 201
+
+@app.route('/login', methods=['POST'])
+def login():
+    email = request.json.get("email", None)
+    password = request.json.get("password", None) 
+    user = User.filter.query(email=email, password=password).first()
+    if user is None:   
+        return jsonify({"msg": "Bad username or password"}), 400
+    access_token = create_access_token(identity=user["email"])
+    return jsonify({ "token": access_token, "user_id": user.id })
 
 # this only runs if `$ python src/main.py` is executed
 if __name__ == '__main__':
